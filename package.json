@@ -1,0 +1,17 @@
+{
+  "name": "super-content-export-extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Copy selected webpage content as Markdown or export it as PNG",
+  "scripts": {
+    "build": "node build.js",
+    "build:plain": "cross-env NO_OBFUSCATE=1 node build.js",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "archiver": "^6.0.1",
+    "cross-env": "^10.1.0",
+    "crx": "^5.0.1",
+    "javascript-obfuscator": "^4.1.1"
+  }
+}

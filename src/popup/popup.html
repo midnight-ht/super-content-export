@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SuperContentExport</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { width: 340px; margin: 0; padding: 0 18px 18px; color: #172033; background: #f8fafc; }
+    .brand-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 18px 0 12px; border-bottom: 1px solid #e2e8f0; }
+    .brand-title { margin: 0; color: #2563eb; font-size: 19px; letter-spacing: -.04em; }
+    .brand-subtitle { margin: 3px 0 0; color: #94a3b8; font-size: 11px; }
+    .header-actions { display: flex; gap: 6px; }
+    .header-actions button, .header-actions a { display: grid; width: 30px; height: 30px; margin: 0; padding: 0; place-items: center; border: 1px solid #cbd5e1; border-radius: 50%; color: #475569; background: #fff; font-size: 13px; text-decoration: none; }
+    .header-actions .language-btn { width: 38px; border-radius: 8px; font-weight: 700; }
+    .page-status { display: inline-flex; align-items: center; gap: 7px; margin: 12px 0 14px; padding: 7px 11px; border: 1px solid #dbe3ee; border-radius: 999px; color: #64748b; background: #fff; font-size: 11px; }
+    .page-status strong { max-width: 165px; overflow: hidden; color: #334155; text-overflow: ellipsis; white-space: nowrap; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 4px #dcfce7; }
+    .desc { margin: 0 0 14px; color: #64748b; font-size: 12px; line-height: 1.5; }
+    .selection { padding: 12px; border: 1px solid #dbe3ee; border-radius: 10px; background: #fff; }
+    .selection-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .selection-title { color: #64748b; font-size: 11px; }
+    .selection-text { margin-top: 5px; overflow: hidden; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+    .locate-btn { width: auto; height: 28px; margin: 0; padding: 0 9px; border: 1px solid #bfdbfe; border-radius: 7px; color: #2563eb; background: #eff6ff; font-size: 11px; }
+    .action-btn { width: 100%; height: 36px; margin-top: 10px; border: 0; border-radius: 8px; color: #fff; font: 600 13px system-ui, sans-serif; cursor: pointer; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    #pickBtn { background: #2563eb; }
+    #copyBtn { background: #0891b2; }
+    #markdownBtn { background: #0f766e; }
+    #pngBtn { background: #7c3aed; }
+    .help-panel { margin: 0 0 14px; padding: 10px 12px; border: 1px solid #bfdbfe; border-radius: 9px; color: #475569; background: #eff6ff; font-size: 11px; line-height: 1.55; }
+    .hint { margin: 12px 0 0; color: #94a3b8; font-size: 11px; line-height: 1.45; }
+  </style>
+</head>
+<body>
+  <header class="brand-header">
+    <div>
+      <h1 class="brand-title" data-i18n="brandTitle">SuperContentExport</h1>
+      <p class="brand-subtitle" data-i18n="brandSubtitle">网页内容导出助手</p>
+    </div>
+    <nav class="header-actions" aria-label="Tools">
+      <a id="githubLink" href="https://github.com/midnight-ht/super-content-export" target="_blank" rel="noreferrer" title="GitHub" aria-label="GitHub">GH</a>
+      <button id="helpBtn" type="button" title="Help" aria-label="Help" aria-expanded="false">?</button>
+      <button id="languageBtn" class="language-btn" type="button" title="Language" aria-label="Language">EN</button>
+    </nav>
+  </header>
+  <div class="page-status"><span class="status-dot" aria-hidden="true"></span><span data-i18n="currentPage">当前页面</span><strong id="pageHost">—</strong></div>
+  <p class="desc" data-i18n="popupDesc">选择网页元素后，复制或导出 Markdown，也可以导出 PNG。</p>
+  <section id="helpPanel" class="help-panel" hidden>
+    <strong data-i18n="helpTitle">使用帮助</strong>
+    <div data-i18n="helpText">点击“选择元素”，再点击页面中的容器。选择后可在页面工具条或本窗口持续复制、下载和导出。</div>
+  </section>
+  <section class="selection">
+    <div class="selection-row">
+      <div class="selection-title" data-i18n="selectionTitle">当前选择</div>
+      <button id="locateBtn" class="locate-btn" type="button" disabled data-i18n="locateBtn">定位容器</button>
+    </div>
+    <div id="selectionText" class="selection-text" data-i18n="selectionEmpty">尚未选择元素</div>
+  </section>
+  <button id="pickBtn" class="action-btn" type="button" data-i18n="pickBtn">选择元素</button>
+  <button id="copyBtn" class="action-btn" type="button" disabled data-i18n="copyBtn">复制为 MD</button>
+  <button id="markdownBtn" class="action-btn" type="button" disabled data-i18n="markdownBtn">导出为 MD</button>
+  <button id="pngBtn" class="action-btn" type="button" disabled data-i18n="pngBtn">导出 PNG</button>
+  <p class="hint" data-i18n="popupHint">长图导出会按视口分块处理，过程中请稍候。</p>
+  <script src="popup-utils.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
