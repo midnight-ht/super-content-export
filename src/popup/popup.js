@@ -4,7 +4,7 @@ const selectionText = $("selectionText");
 const pageHost = $("pageHost");
 const locateBtn = $("locateBtn");
 const exportButtons = [$("copyBtn"), $("markdownBtn"), $("pngBtn")];
-const CONTENT_FILES = ["src/content/i18n-utils.js", "src/content/export-utils.js", "src/content/clipboard-utils.js", "src/content/content.js"];
+const CONTENT_FILES = ["src/content/i18n-utils.js", "src/content/export-utils.js", "src/content/region-utils.js", "src/content/clipboard-utils.js", "src/content/content.js"];
 let currentSelection = null;
 let currentLocale = popupUtils?.normalizeLocale(chrome.i18n?.getUILanguage?.() || navigator.language) || "en";
 let localeMessages = {};
@@ -73,10 +73,10 @@ async function refreshPageStatus() {
 async function sendToContent(message) {
   const tab = await activeTab();
   try {
-    return await chrome.tabs.sendMessage(tab.id, message);
+    return await chrome.tabs.sendMessage(tab.id, message, { frameId: 0 });
   } catch {
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: CONTENT_FILES });
-    return chrome.tabs.sendMessage(tab.id, message);
+    return chrome.tabs.sendMessage(tab.id, message, { frameId: 0 });
   }
 }
 
@@ -142,6 +142,17 @@ async function initialize() {
 }
 
 $("pickBtn").addEventListener("click", startPicker);
+async function startPageAction(type) {
+  try {
+    await sendToContent({ type });
+    window.close();
+  } catch (error) {
+    selectionText.textContent = error.message || localMessage('pickUnsupported', '当前页面不支持选择');
+  }
+}
+$("regionBtn").addEventListener("click", () => startPageAction('SCE_REGION_START'));
+$("fullPageBtn").addEventListener("click", () => startPageAction('SCE_FULL_PAGE_EXPORT'));
+$("fullPageMarkdownBtn").addEventListener("click", () => startPageAction('SCE_FULL_PAGE_MARKDOWN'));
 $("copyBtn").addEventListener("click", () => runExport("copy"));
 $("markdownBtn").addEventListener("click", () => runExport("markdown"));
 $("pngBtn").addEventListener("click", () => runExport("png"));

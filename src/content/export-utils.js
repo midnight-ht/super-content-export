@@ -344,6 +344,20 @@
     return trimDocument(hasBlockStructure ? renderBlock(element, 0, ctx) : renderInline(element, ctx));
   }
 
+  // element.contains() never crosses a shadow boundary, so an ancestor of a
+  // shadow host has to be detected by walking the composed tree instead.
+  function isComposedAncestor(node, target) {
+    if (!node || !target) return false;
+    let current = target;
+    let guard = 0;
+    while (current && guard < 512) {
+      guard += 1;
+      if (current === node) return true;
+      current = getPickParent(current);
+    }
+    return false;
+  }
+
   function shouldHideViewportOverlay(node, exportTarget) {
     if (!node) return false;
     if (node.nodeType && node.nodeType !== 1) return false;
@@ -351,15 +365,42 @@
     if (node === exportTarget) return false;
     if (typeof node.contains === 'function' && node.contains(exportTarget)) return false;
     if (typeof exportTarget.contains === 'function' && exportTarget.contains(node)) return false;
+    if (isComposedAncestor(node, exportTarget)) return false;
     return true;
+  }
+
+  // Walks one level up across shadow boundaries: slotted content resolves to
+  // its <slot>, and the top node of a shadow tree resolves to the shadow host.
+  function getPickParent(node) {
+    if (!node) return null;
+    if (node.assignedSlot) return node.assignedSlot;
+    if (node.parentElement) return node.parentElement;
+    const root = typeof node.getRootNode === 'function' ? node.getRootNode() : null;
+    if (root && root.host && root !== node.ownerDocument) return root.host;
+    return null;
+  }
+
+  // event.target is retargeted to the shadow host for composed events, so the
+  // real node under the pointer has to come from the event path.
+  function getPickEventTarget(event) {
+    const path = typeof event?.composedPath === 'function' ? event.composedPath() : null;
+    if (Array.isArray(path)) {
+      const deep = path.find((node) => node && node.nodeType === 1);
+      if (deep) return deep;
+    }
+    const target = event?.target;
+    if (!target) return null;
+    return target.nodeType === 1 ? target : getPickParent(target);
   }
 
   function getPickChain(element, stopNode) {
     const chain = [];
-    let current = element;
-    while (current && current.nodeType === 1 && current !== stopNode) {
+    const seen = new Set();
+    let current = element && element.nodeType === 1 ? element : getPickParent(element);
+    while (current && current.nodeType === 1 && current !== stopNode && !seen.has(current)) {
+      seen.add(current);
       chain.push(current);
-      current = current.parentElement;
+      current = getPickParent(current);
     }
     return chain;
   }
@@ -374,14 +415,118 @@
     return Number(deltaY) < 0 ? 1 : -1;
   }
 
-  function shouldKeepExpandedPick(eventTarget, selectedElement) {
-    return Boolean(
-      selectedElement
-      && eventTarget
-      && selectedElement !== eventTarget
-      && typeof selectedElement.contains === 'function'
-      && selectedElement.contains(eventTarget),
+  // The depth is relative to whatever is currently hovered, so it has to be
+  // re-clamped every time the chain is rebuilt around a new pointer target.
+  function getPickDepthAfterRebuild(depth, length) {
+    const size = Number(length) || 0;
+    if (size <= 0) return 0;
+    return Math.max(0, Math.min(size - 1, Number(depth) || 0));
+  }
+
+  function pickElementName(element) {
+    const tag = String(element.tagName || '').toLowerCase();
+    const id = typeof element.getAttribute === 'function' ? element.getAttribute('id') : '';
+    if (id) return `${tag}#${id}`;
+    const className = element.classList && element.classList.length
+      ? String(element.classList[0] || '')
+      : '';
+    return className ? `${tag}.${className}` : tag;
+  }
+
+  function getPickLabel(element, depth) {
+    if (!element || element.nodeType !== 1) return '';
+    const name = pickElementName(element).slice(0, 48);
+    const level = Math.max(0, Number(depth) || 0);
+    return level > 0 ? `${name} \u2191${level}` : name;
+  }
+
+  function getPickBadgePosition(targetRect, badgeSize, viewport, gap = 6, margin = 8) {
+    const rect = targetRect || {};
+    const badge = badgeSize || {};
+    const screen = viewport || {};
+    const width = Math.max(1, Number(badge.width) || 1);
+    const height = Math.max(1, Number(badge.height) || 1);
+    const viewportWidth = Math.max(width + margin * 2, Number(screen.width) || 0);
+    const viewportHeight = Math.max(height + margin * 2, Number(screen.height) || 0);
+    const left = Math.min(
+      Math.max(margin, Number(rect.left) || 0),
+      Math.max(margin, viewportWidth - width - margin),
     );
+    const aboveTop = (Number(rect.top) || 0) - height - gap;
+    const top = aboveTop >= margin
+      ? aboveTop
+      : Math.min((Number(rect.bottom) || 0) + gap, Math.max(margin, viewportHeight - height - margin));
+    return { left, top };
+  }
+
+  function selectorPartFor(element) {
+    if (element.id) return `#${escapeCssIdentifier(element.id)}`;
+    let part = String(element.tagName || '').toLowerCase();
+    const classes = element.classList?.length ? Array.from(element.classList).slice(0, 2) : [];
+    if (classes.length) part += `.${classes.map(escapeCssIdentifier).join('.')}`;
+    const siblings = Array.from(element.parentElement?.children || []);
+    if (siblings.length > 1) {
+      const sameTag = siblings.filter((child) => child.tagName === element.tagName);
+      if (sameTag.length > 1) part += `:nth-of-type(${sameTag.indexOf(element) + 1})`;
+    }
+    return part;
+  }
+
+  function escapeCssIdentifier(value) {
+    if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(value);
+    return String(value).replace(/[^\w-]/g, (character) => `\\${character}`);
+  }
+
+  // Builds a selector that survives shadow roots by scoping each step to the
+  // root the element lives in, then joining host selectors with '>>>'.
+  function selectorForElement(element) {
+    if (!element || element.nodeType !== 1) return '';
+    const segments = [];
+    const seen = new Set();
+    let current = element;
+    let guard = 0;
+    while (current && current.nodeType === 1 && guard < 12 && !seen.has(current)) {
+      guard += 1;
+      seen.add(current);
+      const parts = [];
+      let node = current;
+      let depth = 0;
+      while (node && node.nodeType === 1 && node.tagName !== 'BODY' && depth < 5) {
+        parts.unshift(selectorPartFor(node));
+        node = node.parentElement;
+        depth += 1;
+      }
+      if (!parts.length) parts.push(selectorPartFor(current));
+      segments.unshift(parts.join(' > '));
+      const root = typeof current.getRootNode === 'function' ? current.getRootNode() : null;
+      if (root && root.host) current = root.host;
+      else break;
+    }
+    return segments.join(' >>> ');
+  }
+
+  // Resolves a possibly shadow-scoped selector back to an element. '>>>' steps
+  // into the previous match's shadow root; a plain selector falls back to the
+  // document for selectors stored by earlier versions.
+  function querySelectorDeep(selector, root) {
+    const value = String(selector || '').trim();
+    if (!value) return null;
+    const scopes = value.split('>>>').map((part) => part.trim()).filter(Boolean);
+    if (!scopes.length) return null;
+    let currentRoot = root || (typeof document !== 'undefined' ? document : null);
+    if (!currentRoot) return null;
+    let match = null;
+    for (const scope of scopes) {
+      if (!currentRoot || typeof currentRoot.querySelector !== 'function') return null;
+      try {
+        match = currentRoot.querySelector(scope);
+      } catch {
+        match = null;
+      }
+      if (!match) return null;
+      currentRoot = match.shadowRoot || null;
+    }
+    return match;
   }
 
   function isSameOriginResource(resourceUrl, baseUrl) {
@@ -595,6 +740,95 @@
     return { left, top };
   }
 
+  // An ancestor with transform / filter / perspective / zoom turns position:fixed
+  // into a box positioned relative to that ancestor. A zero-offset probe reveals
+  // both the drift and the applied scale so overlays can be compensated.
+  function getOverlayCompensation(probeRect, probeSize = 100) {
+    const expected = Number(probeSize) > 0 ? Number(probeSize) : 100;
+    const measuredWidth = Number(probeRect?.width) || 0;
+    const measuredHeight = Number(probeRect?.height) || 0;
+    const scaleX = measuredWidth > 0 ? measuredWidth / expected : 1;
+    const scaleY = measuredHeight > 0 ? measuredHeight / expected : 1;
+    return {
+      left: Number(probeRect?.left) || 0,
+      top: Number(probeRect?.top) || 0,
+      scaleX: scaleX > 0 ? scaleX : 1,
+      scaleY: scaleY > 0 ? scaleY : 1,
+    };
+  }
+
+  function compensationScales(compensation) {
+    const scaleX = Number(compensation?.scaleX) > 0 ? Number(compensation.scaleX) : 1;
+    const scaleY = Number(compensation?.scaleY) > 0 ? Number(compensation.scaleY) : 1;
+    return { scaleX, scaleY };
+  }
+
+  // Maps a viewport rect into the local coordinate space of an overlay whose
+  // containing block is not the viewport.
+  function getCompensatedOverlayRect(rect, compensation) {
+    const { scaleX, scaleY } = compensationScales(compensation);
+    return {
+      left: ((Number(rect?.left) || 0) - (Number(compensation?.left) || 0)) / scaleX,
+      top: ((Number(rect?.top) || 0) - (Number(compensation?.top) || 0)) / scaleY,
+      width: (Number(rect?.width) || 0) / scaleX,
+      height: (Number(rect?.height) || 0) / scaleY,
+    };
+  }
+
+  function getCompensatedOverlayPoint(rect, compensation) {
+    const compensated = getCompensatedOverlayRect(rect, compensation);
+    return { left: compensated.left, top: compensated.top };
+  }
+
+  // Keeps a fixed overlay at its intended visual size inside a scaled ancestor.
+  function getCompensatedOverlayScaleTransform(compensation) {
+    const { scaleX, scaleY } = compensationScales(compensation);
+    const invertedX = 1 / scaleX;
+    const invertedY = 1 / scaleY;
+    if (Math.abs(invertedX - 1) < 0.001 && Math.abs(invertedY - 1) < 0.001) return '';
+    return `scale(${invertedX}, ${invertedY})`;
+  }
+
+  // CSSStyleDeclaration.setProperty() ignores names that are not valid CSS
+  // identifiers, so camelCase keys such as maxWidth have to be converted first.
+  function toCssPropertyName(property) {
+    return String(property || '').replace(/[A-Z]/g, (character) => `-${character.toLowerCase()}`);
+  }
+
+  function applyStyleProperties(target, styles, priority) {
+    if (!target?.style) return;
+    for (const [property, value] of Object.entries(styles || {})) {
+      const name = toCssPropertyName(property);
+      if (!name) continue;
+      if (priority) target.style.setProperty(name, String(value), priority);
+      else target.style.setProperty(name, String(value));
+    }
+  }
+
+  // The picked element keeps its own computed position/top/left/transform, which
+  // would offset the export clone inside the off-screen wrapper and leave blank
+  // margins. The root clone is re-anchored to the wrapper's own flow origin.
+  //
+  // It stays position:relative rather than static so that absolutely positioned
+  // descendants keep using the clone as their containing block; switching it to
+  // static would reparent them onto the wrapper and distort the layout.
+  function getExportRootResetStyle() {
+    return {
+      position: 'relative',
+      top: 'auto',
+      right: 'auto',
+      bottom: 'auto',
+      left: 'auto',
+      inset: 'auto',
+      float: 'none',
+      clear: 'none',
+      transform: 'none',
+      maxWidth: 'none',
+      maxHeight: 'none',
+      margin: '0',
+    };
+  }
+
   function getSuccessfulExportCleanup(action, succeeded) {
     const exportAction = ['copy', 'markdown', 'png'].includes(action);
     return {
@@ -720,15 +954,16 @@
     clone.style.width = `${size.width}px`;
     clone.style.height = 'auto';
     clone.style.margin = '0';
+    // The clone is rendered inside an off-screen wrapper, so the positioning it
+    // inherited from its ancestors on the live page must not be carried over.
+    applyStyleProperties(clone, getExportRootResetStyle(), 'important');
     const sourceElements = [element, ...Array.from(element.querySelectorAll?.('*') || [])];
     const cloneElements = [clone, ...Array.from(clone.querySelectorAll?.('*') || [])];
     sourceElements.forEach((sourceNode, index) => {
       const cloneNode = cloneElements[index];
       if (!cloneNode?.style) return;
       const expandedStyle = getScrollableExportStyle(sourceNode, getComputedStyle(sourceNode));
-      for (const [property, value] of Object.entries(expandedStyle)) {
-        cloneNode.style[property] = value;
-      }
+      applyStyleProperties(cloneNode, expandedStyle, 'important');
     });
     return clone;
   }
@@ -795,8 +1030,14 @@
   async function renderElementFromVisibleCaptures(element, captureVisibleTab, options = {}) {
     if (typeof captureVisibleTab !== 'function') throw new Error('Visible capture unavailable');
     const scrollContainer = getScrollableAncestors(element)[0] || null;
-    const rect = element.getBoundingClientRect();
-    const { width, height } = getElementExportSize(element, getComputedStyle(element));
+    const pageSize = options.fullPage ? {
+      width: Math.max(window.innerWidth, document.documentElement.scrollWidth, document.body?.scrollWidth || 0),
+      height: Math.max(window.innerHeight, document.documentElement.scrollHeight, document.body?.scrollHeight || 0),
+    } : null;
+    const pageRect = () => ({ left: -window.scrollX, top: -window.scrollY,
+      right: pageSize.width - window.scrollX, bottom: pageSize.height - window.scrollY });
+    const rect = options.fullPage ? pageRect() : element.getBoundingClientRect();
+    const { width, height } = pageSize || getElementExportSize(element, getComputedStyle(element));
     const viewportWidth = Math.max(1, Math.floor(window.innerWidth));
     const viewportHeight = Math.max(1, Math.floor(window.innerHeight));
     const captureWidth = scrollContainer
@@ -837,7 +1078,7 @@
           window.scrollTo(documentLeft + tile.x, documentTop + tile.y);
         }
         await yieldToBrowser(2);
-        const currentRect = element.getBoundingClientRect();
+        const currentRect = options.fullPage ? pageRect() : element.getBoundingClientRect();
         const containerRect = scrollContainer?.getBoundingClientRect?.();
         const dataUrl = await captureVisibleTab();
         const image = await imageFromDataUrl(dataUrl);
@@ -944,8 +1185,22 @@
     decodePrivateUseText,
     matchInkToDigits,
     getPickChain,
+    getPickParent,
+    getPickEventTarget,
     shiftPickIndex,
-    shouldKeepExpandedPick,
+    getPickDepthAfterRebuild,
+    getPickLabel,
+    getPickBadgePosition,
     pickIndexDeltaFromWheel,
+    isComposedAncestor,
+    getOverlayCompensation,
+    getCompensatedOverlayRect,
+    getCompensatedOverlayPoint,
+    getCompensatedOverlayScaleTransform,
+    getExportRootResetStyle,
+    toCssPropertyName,
+    applyStyleProperties,
+    selectorForElement,
+    querySelectorDeep,
   };
 });

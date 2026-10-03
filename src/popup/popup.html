@@ -25,6 +25,10 @@
     .action-btn { width: 100%; height: 36px; margin-top: 10px; border: 0; border-radius: 8px; color: #fff; font: 600 13px system-ui, sans-serif; cursor: pointer; }
     button:disabled { opacity: .45; cursor: not-allowed; }
     #pickBtn { background: #2563eb; }
+    .pick-actions { display: flex; gap: 8px; }
+    #regionBtn { background: #2563eb; }
+    #fullPageBtn { background: #475569; }
+    #fullPageMarkdownBtn { background: #0f766e; }
     #copyBtn { background: #0891b2; }
     #markdownBtn { background: #0f766e; }
     #pngBtn { background: #7c3aed; }
@@ -57,7 +61,12 @@
     </div>
     <div id="selectionText" class="selection-text" data-i18n="selectionEmpty">尚未选择元素</div>
   </section>
-  <button id="pickBtn" class="action-btn" type="button" data-i18n="pickBtn">选择元素</button>
+  <div class="pick-actions">
+    <button id="pickBtn" class="action-btn" type="button" data-i18n="pickBtn">选择元素</button>
+    <button id="regionBtn" class="action-btn" type="button" data-i18n="regionBtn">区域框选</button>
+  </div>
+  <button id="fullPageBtn" class="action-btn" type="button" data-i18n="fullPageBtn">整页导出 PNG</button>
+  <button id="fullPageMarkdownBtn" class="action-btn" type="button" data-i18n="fullPageMarkdownBtn">整页导出 MD</button>
   <button id="copyBtn" class="action-btn" type="button" disabled data-i18n="copyBtn">复制为 MD</button>
   <button id="markdownBtn" class="action-btn" type="button" disabled data-i18n="markdownBtn">导出为 MD</button>
   <button id="pngBtn" class="action-btn" type="button" disabled data-i18n="pngBtn">导出 PNG</button>

@@ -5,6 +5,9 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   const BUILT_IN_MESSAGES = {
     zh_CN: {
+      regionPrompt: '拖动鼠标框选区域 · 松开后复制 MD、导出 MD 或 PNG · Esc 取消',
+      regionRetry: '重新框选',
+      markdownEmpty: '没有可导出的网页内容',
       exportToolbarTitle: '已选择元素',
       exportCopyMarkdown: '复制 Markdown',
       exportDownloadMarkdown: '下载 Markdown',
@@ -22,6 +25,9 @@
       pickCancel: '已取消',
     },
     en: {
+      regionPrompt: 'Drag to select · Release to copy MD or export MD / PNG · Esc to cancel',
+      regionRetry: 'Select again',
+      markdownEmpty: 'No webpage content to export',
       exportToolbarTitle: 'Element selected',
       exportCopyMarkdown: 'Copy Markdown',
       exportDownloadMarkdown: 'Download Markdown',

@@ -24,7 +24,20 @@ const {
   matchInkToDigits,
   getPickChain,
   shiftPickIndex,
-  shouldKeepExpandedPick,
+  getPickDepthAfterRebuild,
+  getPickLabel,
+  getPickBadgePosition,
+  getPickEventTarget,
+  isComposedAncestor,
+  getOverlayCompensation,
+  getCompensatedOverlayRect,
+  getCompensatedOverlayPoint,
+  getCompensatedOverlayScaleTransform,
+  getExportRootResetStyle,
+  toCssPropertyName,
+  applyStyleProperties,
+  selectorForElement,
+  querySelectorDeep,
   pickIndexDeltaFromWheel,
 } = require('../src/content/export-utils.js');
 
@@ -394,15 +407,159 @@ test('builds a pick chain from the hovered node up to the page body', () => {
   assert.equal(pickIndexDeltaFromWheel(80), -1);
 });
 
-test('keeps an expanded pick while the pointer stays inside it', () => {
-  const panel = {
-    contains(node) {
-      return node === this.child;
+test('re-clamps a carried pick depth when the chain is rebuilt', () => {
+  assert.equal(getPickDepthAfterRebuild(3, 5), 3);
+  assert.equal(getPickDepthAfterRebuild(7, 5), 4);
+  assert.equal(getPickDepthAfterRebuild(2, 0), 0);
+  assert.equal(getPickDepthAfterRebuild(-1, 4), 0);
+});
+
+test('labels the hovered element together with its expansion depth', () => {
+  const node = { nodeType: 1, tagName: 'DIV', classList: ['card'], getAttribute: () => null };
+
+  assert.equal(getPickLabel(node, 0), 'div.card');
+  assert.equal(getPickLabel(node, 2), 'div.card ↑2');
+  assert.equal(getPickLabel(null, 0), '');
+});
+
+test('places the depth badge above the highlighted element', () => {
+  assert.deepEqual(
+    getPickBadgePosition(
+      { left: 100, top: 300, bottom: 500 },
+      { width: 120, height: 20 },
+      { width: 1200, height: 900 },
+    ),
+    { left: 100, top: 274 },
+  );
+});
+
+test('moves the badge below the element when there is no room above', () => {
+  assert.deepEqual(
+    getPickBadgePosition(
+      { left: 1190, top: 0, bottom: 40 },
+      { width: 120, height: 20 },
+      { width: 1200, height: 900 },
+    ),
+    { left: 1072, top: 46 },
+  );
+});
+
+test('walks up across a shadow boundary when building the pick chain', () => {
+  const body = { nodeType: 1, tagName: 'BODY', parentElement: null };
+  const host = { nodeType: 1, tagName: 'MY-CARD', parentElement: body, getRootNode: () => ({}) };
+  const shadowRoot = { host };
+  const inner = { nodeType: 1, tagName: 'DIV', parentElement: null, getRootNode: () => shadowRoot };
+  const title = { nodeType: 1, tagName: 'H2', parentElement: inner, getRootNode: () => shadowRoot };
+
+  assert.deepEqual(getPickChain(title, body), [title, inner, host]);
+});
+
+test('takes the deepest node from a composed event path', () => {
+  const host = { nodeType: 1, tagName: 'MY-CARD' };
+  const inner = { nodeType: 1, tagName: 'DIV' };
+  const textNode = { nodeType: 3, parentElement: host };
+
+  assert.equal(getPickEventTarget({ target: host, composedPath: () => [inner, host] }), inner);
+  assert.equal(getPickEventTarget({ target: textNode, composedPath: () => [] }), host);
+  assert.equal(getPickEventTarget({ target: host }), host);
+});
+
+test('detects shadow-host ancestors that contains() cannot see', () => {
+  const wrapper = { nodeType: 1, tagName: 'SECTION' };
+  const host = { nodeType: 1, tagName: 'MY-CARD', parentElement: wrapper, getRootNode: () => ({}) };
+  const shadowRoot = { host };
+  const inner = { nodeType: 1, tagName: 'DIV', parentElement: null, getRootNode: () => shadowRoot };
+
+  assert.equal(isComposedAncestor(wrapper, inner), true);
+  assert.equal(isComposedAncestor(inner, wrapper), false);
+  assert.equal(shouldHideViewportOverlay(wrapper, inner), false);
+});
+
+test('measures the drift a transformed ancestor applies to fixed overlays', () => {
+  assert.deepEqual(
+    getOverlayCompensation({ left: 40, top: -20, width: 200, height: 100 }, 100),
+    { left: 40, top: -20, scaleX: 2, scaleY: 1 },
+  );
+  assert.deepEqual(
+    getOverlayCompensation({ left: 0, top: 0, width: 100, height: 100 }, 100),
+    { left: 0, top: 0, scaleX: 1, scaleY: 1 },
+  );
+});
+
+test('maps a viewport rect into a scaled overlay container', () => {
+  const compensation = { left: 40, top: -20, scaleX: 2, scaleY: 2 };
+
+  assert.deepEqual(
+    getCompensatedOverlayRect({ left: 140, top: 80, width: 300, height: 200 }, compensation),
+    { left: 50, top: 50, width: 150, height: 100 },
+  );
+  assert.deepEqual(getCompensatedOverlayPoint({ left: 140, top: 80 }, compensation), { left: 50, top: 50 });
+});
+
+test('keeps overlay text at its designed size inside a zoomed page', () => {
+  assert.equal(getCompensatedOverlayScaleTransform({ scaleX: 1, scaleY: 1 }), '');
+  assert.equal(getCompensatedOverlayScaleTransform({ scaleX: 2, scaleY: 0.5 }), 'scale(0.5, 2)');
+});
+
+test('resets positioning inherited from ancestors on the export clone root', () => {
+  const style = getExportRootResetStyle();
+
+  // Stays relative so absolutely positioned children keep their containing block.
+  assert.equal(style.position, 'relative');
+  assert.equal(style.transform, 'none');
+  assert.equal(style.top, 'auto');
+  assert.equal(style.left, 'auto');
+  assert.equal(style.margin, '0');
+  assert.equal(style.float, 'none');
+});
+
+test('converts camelCase style keys before calling setProperty', () => {
+  assert.equal(toCssPropertyName('maxWidth'), 'max-width');
+  assert.equal(toCssPropertyName('overflowX'), 'overflow-x');
+  assert.equal(toCssPropertyName('position'), 'position');
+});
+
+test('writes expanded scroll styles onto a clone using valid css names', () => {
+  const applied = [];
+  const target = {
+    style: {
+      setProperty(property, value, priority) {
+        applied.push({ property, value, priority });
+      },
     },
   };
-  panel.child = { id: 'title' };
 
-  assert.equal(shouldKeepExpandedPick(panel.child, panel), true);
-  assert.equal(shouldKeepExpandedPick(panel, panel), false);
-  assert.equal(shouldKeepExpandedPick({ id: 'outside' }, panel), false);
+  applyStyleProperties(target, { maxWidth: 'none', overflowX: 'visible' }, 'important');
+
+  assert.deepEqual(applied, [
+    { property: 'max-width', value: 'none', priority: 'important' },
+    { property: 'overflow-x', value: 'visible', priority: 'important' },
+  ]);
+});
+
+test('builds a selector that steps into a shadow root', () => {
+  const body = { nodeType: 1, tagName: 'BODY' };
+  const host = {
+    nodeType: 1, tagName: 'MY-CARD', classList: [], getAttribute: () => null, parentElement: body,
+  };
+  const shadowRoot = { host };
+  const title = {
+    nodeType: 1, tagName: 'H2', classList: ['title'], getAttribute: () => null,
+    parentElement: null, getRootNode: () => shadowRoot,
+  };
+
+  assert.equal(selectorForElement(title), 'my-card >>> h2.title');
+});
+
+test('resolves a shadow-scoped selector step by step', () => {
+  const inner = { id: 'inner' };
+  const host = {
+    id: 'host',
+    shadowRoot: { querySelector: (scope) => (scope === 'div.card' ? inner : null) },
+  };
+  const root = { querySelector: (scope) => (scope === 'my-card' ? host : null) };
+
+  assert.equal(querySelectorDeep('my-card >>> div.card', root), inner);
+  assert.equal(querySelectorDeep('missing >>> div.card', root), null);
+  assert.equal(querySelectorDeep('', root), null);
 });

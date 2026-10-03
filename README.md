@@ -13,6 +13,8 @@ SuperContentExport is a standalone Chrome Manifest V3 extension for picking a we
 | Copy Markdown | Copy the selected element's Markdown to the clipboard |
 | Download Markdown | Save the selected content as a `.md` file |
 | PNG export | Render the selected element with its current styles as a PNG |
+| Region selection | Drag a rectangle to copy Markdown or export MD / PNG; reselect or cancel with Esc |
+| Full-page export | Export the page document as Markdown or a stitched PNG without selecting an element |
 | Long-page capture | Capture large selections in viewport tiles and stitch them together |
 | Overlay handling | Temporarily hide repeated `fixed`/`sticky` page overlays during native capture |
 | Bilingual UI | Switches between Simplified Chinese and English through Chrome i18n |
@@ -53,6 +55,14 @@ The command creates `dist/`, a versioned ZIP, and a signed CRX in the project ro
 5. Press `Esc` while picking, or click **Cancel** in the toolbar, to leave selection mode.
 
 The popup also keeps the latest selection's text and selector locally so that the export buttons can be used again without picking the element a second time.
+
+Choose **Select region**, drag a rectangle, then choose **Copy Markdown**, **Download Markdown**, or **Export PNG**. The selection shows its dimensions and provides reselect and cancel actions. Region capture preserves visible page content while hiding the extension UI, and stays within the current viewport.
+
+Region Markdown uses live text geometry, clips boundary text at character positions, and retains headings, links, lists, tables and code. Images are exported as links; text inside images or canvases is not recognized.
+
+Choose **Export full page MD** to export the currently loaded document, including offscreen text. Hidden elements, scripts and extension UI are filtered out, and relative image and link URLs are resolved. This requires no screenshot scrolling and does not automatically load infinite-scroll content.
+
+Choose **Export full page PNG** to capture the document in viewport tiles. Keep the tab in the foreground until it finishes. The original scroll position is restored afterward. This captures the current document extent; it does not automatically load infinite-scroll content or expand independent internal scroll containers.
 
 ### PNG export behavior
 
