@@ -38,8 +38,12 @@
     return String(value || '').replace(/\s+/g, ' ');
   }
 
-  function escapeText(value) {
-    return normalizeInline(value).replace(/([\\`*_[\]<>])/g, '\\$1');
+  function escapeText(value, node) {
+    const whiteSpace = attr(node?.parentElement || node?.parentNode, 'data-sce-markdown-white-space');
+    const normalized = whiteSpace
+      ? String(value || '').replace(/\r\n?/g, '\n').replace(/[^\S\n]+/g, ' ')
+      : normalizeInline(value);
+    return normalized.replace(/([\\`*_[\]<>])/g, '\\$1');
   }
 
   function isActionHref(href) {
@@ -195,7 +199,7 @@
 
   function renderInline(node, ctx) {
     if (!node) return '';
-    if (node.nodeType === 3) return escapeText(decodedText(node, ctx));
+    if (node.nodeType === 3) return escapeText(decodedText(node, ctx), node);
     if (node.nodeType !== 1) return '';
 
     const tag = String(node.tagName || '').toUpperCase();
@@ -279,7 +283,7 @@
 
   function renderBlock(node, depth = 0, ctx) {
     if (!node) return '';
-    if (node.nodeType === 3) return escapeText(decodedText(node, ctx));
+    if (node.nodeType === 3) return escapeText(decodedText(node, ctx), node);
     if (node.nodeType !== 1) return '';
 
     const tag = String(node.tagName || '').toUpperCase();

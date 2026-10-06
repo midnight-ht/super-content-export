@@ -81,7 +81,8 @@
       if (ignored.has(tag) || String(node.getAttribute('id') || '').startsWith('__SuperContentExport_')) return null;
       const style = styleResolver(node) || {};
       if (node.getAttribute('hidden') !== null || style.display === 'none'
-        || style.visibility === 'hidden' || style.visibility === 'collapse' || style.opacity === '0') return null;
+        || style.visibility === 'hidden' || style.visibility === 'collapse' || style.opacity === '0'
+        || (style.fontSize && parseFloat(style.fontSize) === 0)) return null;
       if (clip && /hidden|clip|auto|scroll/.test(`${style.overflow} ${style.overflowX} ${style.overflowY}`)) {
         const rect = node.getBoundingClientRect();
         const clipped = { ...clip };
@@ -95,6 +96,10 @@
         clip = clipped;
       }
       const clone = node.cloneNode(false);
+      // Detached clones lose inherited/page CSS, including pre-wrap job descriptions.
+      if (/^(pre|pre-wrap|pre-line|break-spaces)$/.test(style.whiteSpace || '')) {
+        clone.setAttribute('data-sce-markdown-white-space', style.whiteSpace);
+      }
       for (const attribute of ['href', 'src']) {
         const value = node.getAttribute(attribute);
         if (value && !/^\s*(?:javascript:|#)/i.test(value)) {

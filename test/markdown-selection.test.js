@@ -32,6 +32,23 @@ const documentStub = {
 };
 const options = { document: documentStub, styleResolver: value => value.attrs?.hidden ? { display: 'none' } : {} };
 
+test('BOSS Markdown omits hidden injected words and keeps visible brand names', () => {
+  const root = node('p', [node('span', [text('BOSS直聘')], { visibility: 'hidden', fontSize: '0px' }),
+    text('公司情况：'), node('span', [text('来自BOSS直聘')], { display: 'none' }),
+    text('企业微信，'), node('span', [text('kanzhun')], { fontSize: '0px' }),
+    text('飞书服'), node('span', [text('boss')], { opacity: '0' }),
+    text('务商。\n\n正文提到BOSS直聘和boss，应该保留。')], { whiteSpace: 'pre-wrap' });
+  const result = elementToMarkdown(cloneMarkdownContent(root, { ...options, styleResolver: n => n.attrs }));
+  assert.equal(result, '公司情况：企业微信，飞书服务商。\n\n正文提到BOSS直聘和boss，应该保留。');
+});
+
+test('region Markdown preserves pre-wrap line breaks through visible inline spans', () => {
+  const root = node('p', [text('公司情况：'), node('span', [text('企业微信', 0, 20)]),
+    text('\n岗位职责：\n1、推荐产品', 0, 40)], { whiteSpace: 'pre-wrap' });
+  const clone = cloneMarkdownContent(root, { ...options, rect: box(0, 0, 400, 100), styleResolver: n => n.attrs });
+  assert.equal(elementToMarkdown(clone), '公司情况：企业微信\n岗位职责：\n1、推荐产品');
+});
+
 test('region Markdown retains structure without including other content in the same parent', () => {
   const root = node('main', [node('h2', [text('Title')]), node('p', [text('Outside', 0, 80)]),
     node('p', [node('strong', [text('Bold', 0, 20)]), node('a', [text('Link', 50, 20)], { href: '/guide' })])]);

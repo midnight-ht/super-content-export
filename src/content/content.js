@@ -430,7 +430,8 @@ async function ensureExportTarget() {
 }
 
 function selectedMarkdown() {
-  return window.SuperContentExport?.elementToMarkdown(exportTarget) || "";
+  const clone = window.SuperContentExportRegion.cloneMarkdownContent(exportTarget);
+  return window.SuperContentExport?.elementToMarkdown(clone) || "";
 }
 
 function positionExportToolbar() {
